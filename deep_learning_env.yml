@@ -43,6 +43,7 @@ dependencies:
   - skorch
   - pip
   - opencv
+  - av
   - pip:
       - tensorflow-rocm==2.3.0
       - ipython
