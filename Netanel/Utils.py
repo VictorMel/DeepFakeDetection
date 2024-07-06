@@ -2,24 +2,24 @@ import os
 import subprocess
 import grp
 
-# Function to check if the user is in the "render" group
-
-def user_in_render_group(user):
+# Function to check if the user is in the groups 
+def check_and_add_user_to_groups(user):
+    groups_to_check = ["render", "video"]
+    
     try:
-        groups = [g.gr_name for g in grp.getgrall() if user in g.gr_mem]
-        gid = os.getgid()
-        group = grp.getgrgid(gid).gr_name
-        return group == 'render' or 'render' in groups
-    except KeyError:
-        return False
-
-# Function to add user to "render" group
-def add_user_to_render_group(user):
-    try:
-        subprocess.run(['sudo', 'usermod', '-aG', 'render', user], check=True)
-        print(f'User {user} added to render group. Please log out and log back in for changes to take effect.')
+        # Get the current groups of the user
+        result = subprocess.run(['groups', user], capture_output=True, text=True, check=True)
+        user_groups = result.stdout.strip().split(':')[-1].split()
+        
+        for group in groups_to_check:
+            if group not in user_groups:
+                print(f"User {user} is not in the {group} group. Adding to {group} group.")
+                subprocess.run(['sudo', 'usermod', '-aG', group, user], check=True)
+            else:
+                print(f"User {user} is already in the {group} group.")
+                
     except subprocess.CalledProcessError as e:
-        print(f'Failed to add user {user} to render group: {e}')
+        print(f"An error occurred: {e}")
 
 # Function to check if a package is installed
 def is_package_installed(package_name):
