@@ -19,11 +19,8 @@ def main():
         return
 
     # Extract real and fake losses
-    real_losses = [float(line.split(" ")[-1]) for line in lines if line.startswith("real_loss")]
-    fake_losses = [float(line.split(" ")[-1]) for line in lines if line.startswith("fake_loss")]
-
-    real_losses = np.array(real_losses)
-    fake_losses = np.array(fake_losses)
+    real_losses = np.array([float(line.split(" ")[-1]) for line in lines if line.startswith("real_loss")])
+    fake_losses = np.array([float(line.split(" ")[-1]) for line in lines if line.startswith("fake_loss")])
 
     # Calculate weighted loss
     loss = (fake_losses * args.fake_weight + real_losses) / 2
