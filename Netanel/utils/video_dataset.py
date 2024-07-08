@@ -4,7 +4,8 @@ from torchvision.io import read_video
 from torch import nn
 import json
 from os import path
-from typing import Self, TypedDict, Union, Optional, Literal, List, Tuple, Callable
+from typing import TypedDict, Union, Optional, Literal, List, Tuple, Callable
+from typing_extensions import Self
 import glob
 
 # Define type aliases for better readability

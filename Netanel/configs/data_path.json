@@ -3,5 +3,6 @@
         "Victor": "E:\\DeepFakeDetection\\dfdc_train_all",
         "Nitzan": "D:\\dfdc",
         "Netanel": "F:\\dfdc"
-    }
+    },
+    "batch size": 3
 }
