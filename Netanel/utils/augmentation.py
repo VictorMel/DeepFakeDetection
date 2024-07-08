@@ -2,7 +2,7 @@ import random
 import cv2
 import numpy as np
 from albumentations import DualTransform, ImageOnlyTransform
-from albumentations.augmentations.functional import crop
+from albumentations import Crop
 
 
 def isotropically_resize_image(img, size, interpolation_down=cv2.INTER_AREA, interpolation_up=cv2.INTER_CUBIC):
@@ -130,7 +130,7 @@ class RandomSizedCropNonEmptyMaskIfExists(DualTransform):
         Returns:
         - numpy.ndarray: Cropped image.
         """
-        return crop(img, x_min, y_min, x_max, y_max)
+        return Crop(img, x_min, y_min, x_max, y_max)
 
     @property
     def targets_as_params(self):
