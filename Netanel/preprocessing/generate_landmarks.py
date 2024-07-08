@@ -59,7 +59,7 @@ def main():
     with Pool(processes=os.cpu_count()) as p:
         with tqdm(total=len(ids)) as pbar:
             func = partial(save_landmarks, root_dir=args.root_dir)
-            for v in p.imap_unordered(func, ids):
+            for _ in p.imap_unordered(func, ids):
                 pbar.update()
 
 
