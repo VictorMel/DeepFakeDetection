@@ -1,9 +1,9 @@
+import contextlib
 import math
 import os
 import random
 import sys
 import traceback
-
 import cv2
 import numpy as np
 import pandas as pd
@@ -23,10 +23,9 @@ def prepare_bit_masks(mask):
     h, w = mask.shape
     mid_w = w // 2
     mid_h = w // 2
-    masks = []
     ones = np.ones_like(mask)
     ones[:mid_h] = 0
-    masks.append(ones)
+    masks = [ones]
     ones = np.ones_like(mask)
     ones[mid_h:] = 0
     masks.append(ones)
@@ -52,7 +51,7 @@ predictor = dlib.shape_predictor('libs/shape_predictor_68_face_landmarks.dat')
 
 
 def blackout_convex_hull(img):
-    try:
+    with contextlib.suppress(Exception):
         rect = detector(img)[0]
         sp = predictor(img, rect)
         landmarks = np.array([[p.x, p.y] for p in sp.parts()])
@@ -74,15 +73,12 @@ def blackout_convex_hull(img):
                 cropped_img[:y, :] = 0
             else:
                 cropped_img[y:, :] = 0
+        elif first:
+            cropped_img[:, :x] = 0
         else:
-            if first:
-                cropped_img[:, :x] = 0
-            else:
-                cropped_img[:, x:] = 0
+            cropped_img[:, x:] = 0
 
         img[cropped_img > 0] = 0
-    except Exception as e:
-        pass
 
 
 def dist(p1, p2):
@@ -216,22 +212,12 @@ def blend_original(img):
 
 class DeepFakeClassifierDataset(Dataset):
 
-    def __init__(self,
-                 data_path="/mnt/sota/datasets/deepfake",
-                 fold=0,
-                 label_smoothing=0.01,
-                 padding_part=3,
-                 hardcore=True,
-                 crops_dir="crops",
-                 folds_csv="folds.csv",
-                 normalize={"mean": [0.485, 0.456, 0.406],
-                            "std": [0.229, 0.224, 0.225]},
-                 rotation=False,
-                 mode="train",
-                 reduce_val=True,
-                 oversample_real=True,
-                 transforms=None
-                 ):
+    def __init__(self, data_path="/mnt/sota/datasets/deepfake", fold=0, label_smoothing=0.01, padding_part=3, hardcore=True, crops_dir="crops", folds_csv="folds.csv", normalize=None, rotation=False, mode="train", reduce_val=True, oversample_real=True, transforms=None):
+        if normalize is None:
+            normalize = {
+                "mean": [0.485, 0.456, 0.406],
+                "std": [0.229, 0.224, 0.225],
+            }
         super().__init__()
         self.data_root = data_path
         self.fold = fold
@@ -264,9 +250,8 @@ class DeepFakeClassifierDataset(Dataset):
                     msk = cv2.imread(diff_path, cv2.IMREAD_GRAYSCALE)
                     if msk is not None:
                         mask = msk
-                except:
+                except Exception:
                     print("not found mask", diff_path)
-                    pass
                 if self.mode == "train" and self.hardcore and not self.rotation:
                     landmark_path = os.path.join(self.data_root, "landmarks", ori_video, img_file[:-4] + ".npy")
                     if os.path.exists(landmark_path) and random.random() < 0.7:
@@ -295,19 +280,9 @@ class DeepFakeClassifierDataset(Dataset):
                     data = self.transforms(image=image, mask=mask)
                     image = data["image"]
                     mask = data["mask"]
-                if self.mode == "train" and self.hardcore and self.rotation:
-                    # landmark_path = os.path.join(self.data_root, "landmarks", ori_video, img_file[:-4] + ".npy")
-                    dropout = 0.8 if label > 0.5 else 0.6
-                    if self.rotation:
-                        dropout *= 0.7
-                    elif random.random() < dropout:
-                        blackout_random(image, mask, label)
-
-                #
-                # os.makedirs("../images", exist_ok=True)
-                # cv2.imwrite(os.path.join("../images", video+ "_" + str(1 if label > 0.5 else 0) + "_"+img_file), image[...,::-1])
-
-                if self.mode == "train" and self.rotation:
+                if self.mode == "train":
+                    if self.hardcore and self.rotation:
+                        dropout = (0.8 if label > 0.5 else 0.6) * 0.7
                     rotation = random.randint(0, 3)
                     image = rot90(image, rotation)
 
@@ -318,27 +293,12 @@ class DeepFakeClassifierDataset(Dataset):
                 traceback.print_exc(file=sys.stdout)
                 print("Broken image", os.path.join(self.data_root, self.crops_dir, video, img_file))
                 index = random.randint(0, len(self.data) - 1)
-
-    def random_blackout_landmark(self, image, mask, landmarks):
-        x, y = random.choice(landmarks)
-        first = random.random() > 0.5
-        #  crop half face either vertically or horizontally
-        if random.random() > 0.5:
-            # width
-            if first:
-                image[:, :x] = 0
-                mask[:, :x] = 0
             else:
                 image[:, x:] = 0
                 mask[:, x:] = 0
         else:
-            # height
-            if first:
-                image[:y, :] = 0
-                mask[:y, :] = 0
-            else:
-                image[y:, :] = 0
-                mask[y:, :] = 0
+            image[y:, :] = 0
+            mask[y:, :] = 0
 
     def reset(self, epoch, seed):
         self.data = self._prepare_data(epoch, seed)
@@ -361,8 +321,7 @@ class DeepFakeClassifierDataset(Dataset):
             # another option is to use public validation set
             #rows = rows[rows["video"].isin(PUBLIC_SET)]
 
-        print(
-            "real {} fakes {} mode {}".format(len(rows[rows["label"] == 0]), len(rows[rows["label"] == 1]), self.mode))
+        print(f'real {len(rows[rows["label"] == 0])} fakes {len(rows[rows["label"] == 1])} mode {self.mode}')
         data = rows.values
 
         np.random.seed(seed)
