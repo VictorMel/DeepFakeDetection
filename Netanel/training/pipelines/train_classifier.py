@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 from collections import defaultdict
 from sklearn.metrics import log_loss
@@ -117,7 +116,7 @@ def main():
 
     # Setup loss functions
     ohem = conf.get("ohem_samples", None)
-    reduction = "mean" if not ohem else "none"
+    reduction = "none" if ohem else "mean"
     loss_fn = []
     weights = []
 
@@ -159,7 +158,9 @@ def main():
 
     # Initialize SummaryWriter for TensorBoard logging
     os.makedirs(args.logdir, exist_ok=True)
-    summary_writer = SummaryWriter(args.logdir + '/' + conf.get("prefix", args.prefix) + conf['encoder'] + "_" + str(args.fold))
+    prefix = conf.get("prefix", args.prefix)
+    encoder_config = conf['encoder']
+    summary_writer = SummaryWriter(f'{args.logdir}/{prefix}{encoder_config}_{str(args.fold)}')
 
     # Load checkpoint if provided
     if args.resume:
@@ -177,7 +178,7 @@ def main():
                 f"=> loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']}, bce_best {checkpoint['bce_best']})"
             )
         else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+            print(f"=> no checkpoint found at '{args.resume}'")
 
     if args.from_zero:
         start_epoch = 0
@@ -188,7 +189,7 @@ def main():
     if conf['fp16']:
         model, optimizer = amp.initialize(model, optimizer, opt_level=args.opt_level, loss_scale='dynamic')
 
-    snapshot_name = "{}{}_{}_{}".format(conf.get("prefix", args.prefix), conf['network'], conf['encoder'], args.fold)
+    snapshot_name = f"""{conf.get("prefix", args.prefix)}{conf['network']}_{conf['encoder']}_{args.fold}"""
 
     # Distributed or DataParallel model
     if args.distributed:
@@ -276,7 +277,7 @@ def evaluate(val_data_loader, model, loss_functions, epoch, bce_best, snapshot_n
     targets_all = []
     outputs_all = []
     with torch.no_grad():
-        for i, (inputs, targets) in enumerate(tqdm(val_data_loader)):
+        for inputs, targets in tqdm(val_data_loader):
             inputs = inputs.cuda()
             targets = targets.cuda()
             outputs = model(inputs)
@@ -297,7 +298,14 @@ def evaluate(val_data_loader, model, loss_functions, epoch, bce_best, snapshot_n
         if bce < bce_best:
             print("Epoch {}: Improved log_loss from {:.4f} to {:.4f}. Saving checkpoint.".format(epoch, bce_best, bce))
             bce_best = bce
-            torch.save({'epoch': epoch, 'state_dict': model.state_dict(), 'bce_best': bce_best}, snapshot_name + "_best.pth")
+            torch.save(
+                {
+                    'epoch': epoch,
+                    'state_dict': model.state_dict(),
+                    'bce_best': bce_best,
+                },
+                f"{snapshot_name}_best.pth",
+            )
         else:
             print("Epoch {}: log_loss did not improve from {:.4f}".format(epoch, bce_best))
 
