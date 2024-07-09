@@ -9,12 +9,16 @@ import numpy as np
 import pandas as pd
 import skimage.draw
 from albumentations import ImageCompression, OneOf, GaussianBlur, Blur
-from albumentations.augmentations.functional import image_compression, rot90
-from albumentations.pytorch.functional import img_to_tensor
+from albumentations.augmentations.functional import image_compression
+from albumentations import Rotate
+from albumentations.pytorch import ToTensorV2
+from PIL import Image
+import torchvision.transforms as transforms
+# from albumentations.pytorch.functional import img_to_tensor
 from scipy.ndimage import binary_erosion, binary_dilation
 from skimage import measure
 from torch.utils.data import Dataset
-import dlib
+# import dlib
 
 from training.datasets.validation_set import PUBLIC_SET
 
@@ -46,8 +50,12 @@ def prepare_bit_masks(mask):
     return masks
 
 
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor('libs/shape_predictor_68_face_landmarks.dat')
+def random_rotate(image):
+    transform = Rotate(limit=(90, 90), p=1)
+    return transform(image=image)['image']
+
+# detector = dlib.get_frontal_face_detector()
+# predictor = dlib.shape_predictor('libs/shape_predictor_68_face_landmarks.dat')
 
 
 def blackout_convex_hull(img):
@@ -234,71 +242,73 @@ class DeepFakeClassifierDataset(Dataset):
         self.oversample_real = oversample_real
         self.reduce_val = reduce_val
 
-    def __getitem__(self, index: int):
+    # def __getitem__(self, index: int):
 
-        while True:
-            video, img_file, label, ori_video, frame, fold = self.data[index]
-            try:
-                if self.mode == "train":
-                    label = np.clip(label, self.label_smoothing, 1 - self.label_smoothing)
-                img_path = os.path.join(self.data_root, self.crops_dir, video, img_file)
-                image = cv2.imread(img_path, cv2.IMREAD_COLOR)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                mask = np.zeros(image.shape[:2], dtype=np.uint8)
-                diff_path = os.path.join(self.data_root, "diffs", video, img_file[:-4] + "_diff.png")
-                try:
-                    msk = cv2.imread(diff_path, cv2.IMREAD_GRAYSCALE)
-                    if msk is not None:
-                        mask = msk
-                except Exception:
-                    print("not found mask", diff_path)
-                if self.mode == "train" and self.hardcore and not self.rotation:
-                    landmark_path = os.path.join(self.data_root, "landmarks", ori_video, img_file[:-4] + ".npy")
-                    if os.path.exists(landmark_path) and random.random() < 0.7:
-                        landmarks = np.load(landmark_path)
-                        image = remove_landmark(image, landmarks)
-                    elif random.random() < 0.2:
-                        blackout_convex_hull(image)
-                    elif random.random() < 0.1:
-                        binary_mask = mask > 0.4 * 255
-                        masks = prepare_bit_masks((binary_mask * 1).astype(np.uint8))
-                        tries = 6
-                        current_try = 1
-                        while current_try < tries:
-                            bitmap_msk = random.choice(masks)
-                            if label < 0.5 or np.count_nonzero(mask * bitmap_msk) > 20:
-                                mask *= bitmap_msk
-                                image *= np.expand_dims(bitmap_msk, axis=-1)
-                                break
-                            current_try += 1
-                if self.mode == "train" and self.padding_part > 3:
-                    image = change_padding(image, self.padding_part)
-                valid_label = np.count_nonzero(mask[mask > 20]) > 32 or label < 0.5
-                valid_label = 1 if valid_label else 0
-                rotation = 0
-                if self.transforms:
-                    data = self.transforms(image=image, mask=mask)
-                    image = data["image"]
-                    mask = data["mask"]
-                if self.mode == "train":
-                    if self.hardcore and self.rotation:
-                        dropout = (0.8 if label > 0.5 else 0.6) * 0.7
-                    rotation = random.randint(0, 3)
-                    image = rot90(image, rotation)
+    #     while True:
+    #         video, img_file, label, ori_video, frame, fold = self.data[index]
+    #         try:
+    #             if self.mode == "train":
+    #                 label = np.clip(label, self.label_smoothing, 1 - self.label_smoothing)
+    #             img_path = os.path.join(self.data_root, self.crops_dir, video, img_file)
+    #             image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    #             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #             mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    #             diff_path = os.path.join(self.data_root, "diffs", video, img_file[:-4] + "_diff.png")
+    #             try:
+    #                 msk = cv2.imread(diff_path, cv2.IMREAD_GRAYSCALE)
+    #                 if msk is not None:
+    #                     mask = msk
+    #             except Exception:
+    #                 print("not found mask", diff_path)
+    #             if self.mode == "train" and self.hardcore and not self.rotation:
+    #                 landmark_path = os.path.join(self.data_root, "landmarks", ori_video, img_file[:-4] + ".npy")
+    #                 if os.path.exists(landmark_path) and random.random() < 0.7:
+    #                     landmarks = np.load(landmark_path)
+    #                     image = remove_landmark(image, landmarks)
+    #                 elif random.random() < 0.2:
+    #                     blackout_convex_hull(image)
+    #                 elif random.random() < 0.1:
+    #                     binary_mask = mask > 0.4 * 255
+    #                     masks = prepare_bit_masks((binary_mask * 1).astype(np.uint8))
+    #                     tries = 6
+    #                     current_try = 1
+    #                     while current_try < tries:
+    #                         bitmap_msk = random.choice(masks)
+    #                         if label < 0.5 or np.count_nonzero(mask * bitmap_msk) > 20:
+    #                             mask *= bitmap_msk
+    #                             image *= np.expand_dims(bitmap_msk, axis=-1)
+    #                             break
+    #                         current_try += 1
+    #             if self.mode == "train" and self.padding_part > 3:
+    #                 image = change_padding(image, self.padding_part)
+    #             valid_label = np.count_nonzero(mask[mask > 20]) > 32 or label < 0.5
+    #             valid_label = 1 if valid_label else 0
+    #             rotation = 0
+    #             if self.transforms:
+    #                 data = self.transforms(image=image, mask=mask)
+    #                 image = data["image"]
+    #                 mask = data["mask"]
+    #             if self.mode == "train":
+    #                 if self.hardcore and self.rotation:
+    #                     dropout = (0.8 if label > 0.5 else 0.6) * 0.7
 
-                image = img_to_tensor(image, self.normalize)
-                return {"image": image, "labels": np.array((label,)), "img_name": os.path.join(video, img_file),
-                        "valid": valid_label, "rotations": rotation}
-            except Exception as e:
-                traceback.print_exc(file=sys.stdout)
-                print("Broken image", os.path.join(self.data_root, self.crops_dir, video, img_file))
-                index = random.randint(0, len(self.data) - 1)
-            else:
-                image[:, x:] = 0
-                mask[:, x:] = 0
-        else:
-            image[y:, :] = 0
-            mask[y:, :] = 0
+    #                 transform = Rotate(limit=(0, 3), p=1)
+    #                 transformed = transform(image=image)
+    #                 image = transformed['image']
+
+    #             image = img_to_tensor(image, self.normalize)
+    #             return {"image": image, "labels": np.array((label,)), "img_name": os.path.join(video, img_file),
+    #                     "valid": valid_label, "rotations": rotation}
+    #         except Exception as e:
+    #             traceback.print_exc(file=sys.stdout)
+    #             print("Broken image", os.path.join(self.data_root, self.crops_dir, video, img_file))
+    #             index = random.randint(0, len(self.data) - 1)
+    #         else:
+    #             image[:, x:] = 0
+    #             mask[:, x:] = 0
+    #     else:
+    #         image[y:, :] = 0
+    #         mask[y:, :] = 0
 
     def reset(self, epoch, seed):
         self.data = self._prepare_data(epoch, seed)
@@ -306,27 +316,27 @@ class DeepFakeClassifierDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def _prepare_data(self, epoch, seed):
-        df = self.df
-        if self.mode == "train":
-            rows = df[df["fold"] != self.fold]
-        else:
-            rows = df[df["fold"] == self.fold]
-        seed = (epoch + 1) * seed
-        if self.oversample_real:
-            rows = self._oversample(rows, seed)
-        if self.mode == "val" and self.reduce_val:
-            # every 2nd frame, to speed up validation
-            rows = rows[rows["frame"] % 20 == 0]
-            # another option is to use public validation set
-            #rows = rows[rows["video"].isin(PUBLIC_SET)]
+    # def _prepare_data(self, epoch: int, seed: int):img_to_tensor
 
-        print(f'real {len(rows[rows["label"] == 0])} fakes {len(rows[rows["label"] == 1])} mode {self.mode}')
-        data = rows.values
+    # df = self.df
+    # if self.mode == "train":
+    #     rows = df[df["fold"] != self.fold]
+    # else:
+    #     rows = df[df["fold"] == self.fold]
+    # seed = (epoch + 1) * seed
+    # if self.oversample_real:
+    #     rows = self._oversample(rows, seed)
+    # if self.mode == "val" and self.reduce_val:
+    #     # every 2nd frame, to speed up validation
+    #     rows = rows[rows["frame"] % 20 == 0]
+    #     # another option is to use public validation set
+    #     #rows = rows[rows["video"].isin(PUBLIC_SET)]
 
-        np.random.seed(seed)
-        np.random.shuffle(data)
-        return data
+    # print(f'real {len(rows[rows["label"] == 0])} fakes {len(rows[rows["label"] == 1])} mode {self.mode}')
+    # data = rows.values
+
+    # np.random.seed(seed)
+    # np.random.shuffle(data)
 
     def _oversample(self, rows: pd.DataFrame, seed):
         real = rows[rows["label"] == 0]
