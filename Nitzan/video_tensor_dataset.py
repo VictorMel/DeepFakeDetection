@@ -30,9 +30,12 @@ class VideoTensorDataset(Dataset):
   transform: Optional[Callable]
   target_transform: Optional[Callable]
 
-  def __init__(self: Self, original_data_path: str, tensor_data_paths: List[str], transform: Optional[Callable] = None, target_transform: Optional[Callable] = None):
+  device: str
+
+  def __init__(self: Self, original_data_path: str, tensor_data_paths: List[str], device: str, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None):
     self.original_data_path = original_data_path
     self.tensor_data_paths = tensor_data_paths
+    self.device = device
     self.transform = transform
     self.target_transform = target_transform
 
@@ -45,7 +48,7 @@ class VideoTensorDataset(Dataset):
       metadata = json.load(open(metadata_path))
       for filename, data in metadata.items():
         key, _ = path.splitext(filename)
-        self.labels[key] = 1 if data['label'] == 'FAKE' else 0
+        self.labels[key] = 1.0 if data['label'] == 'FAKE' else 0.0
     
     # Init tensor paths & ids
     self.tensor_paths = {}
@@ -62,7 +65,7 @@ class VideoTensorDataset(Dataset):
   def __getitem__(self: Self, index: int):
     tensor_id = self.tensor_ids[index]
     tensor_path = self.tensor_paths[tensor_id]
-    tensor = torch.load(tensor_path)
+    tensor = torch.load(tensor_path, map_location=self.device)
 
     if self.transform:
       tensor = self.transform(tensor)
