@@ -9,7 +9,9 @@ import numpy as np
 import pandas as pd
 import skimage.draw
 from albumentations import ImageCompression, OneOf, GaussianBlur, Blur
-from albumentations.augmentations.functional import image_compression, rot90
+from albumentations.augmentations.functional import image_compression
+from albumentations import Rotate
+from albumentations.pytorch import ToTensorV2
 from albumentations.pytorch.functional import img_to_tensor
 from scipy.ndimage import binary_erosion, binary_dilation
 from skimage import measure
@@ -45,6 +47,10 @@ def prepare_bit_masks(mask):
     masks.append(ones)
     return masks
 
+
+def random_rotate(image):
+    transform = Rotate(limit=(90, 90), p=1)
+    return transform(image=image)['image']
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor('libs/shape_predictor_68_face_landmarks.dat')
@@ -283,8 +289,10 @@ class DeepFakeClassifierDataset(Dataset):
                 if self.mode == "train":
                     if self.hardcore and self.rotation:
                         dropout = (0.8 if label > 0.5 else 0.6) * 0.7
-                    rotation = random.randint(0, 3)
-                    image = rot90(image, rotation)
+
+                    transform = Rotate(limit=(0, 3), p=1)
+                    transformed = transform(image=image)
+                    image = transformed['image']
 
                 image = img_to_tensor(image, self.normalize)
                 return {"image": image, "labels": np.array((label,)), "img_name": os.path.join(video, img_file),
