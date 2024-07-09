@@ -12,6 +12,8 @@ from albumentations import ImageCompression, OneOf, GaussianBlur, Blur
 from albumentations.augmentations.functional import image_compression
 from albumentations import Rotate
 from albumentations.pytorch import ToTensorV2
+from PIL import Image
+import torchvision.transforms as transforms
 from albumentations.pytorch.functional import img_to_tensor
 from scipy.ndimage import binary_erosion, binary_dilation
 from skimage import measure
@@ -314,7 +316,7 @@ class DeepFakeClassifierDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def _prepare_data(self, epoch, seed):
+    def _prepare_data(self, epoch: int, seed: int):img_to_tensor
         df = self.df
         if self.mode == "train":
             rows = df[df["fold"] != self.fold]
