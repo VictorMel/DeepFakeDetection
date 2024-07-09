@@ -1,8 +1,17 @@
 {
     "data path": {
-        "Victor": "E:\\DeepFakeDetection\\dfdc_train_all",
-        "Nitzan": "D:\\dfdc",
-        "Netanel": "F:\\dfdc"
+        "Victor": [
+            "E:\\DeepFakeDetection\\dfdc_train_all",
+            "E:\\DeepFakeDetection\\smalldata"
+        ],
+        "Nitzan": [
+            "D:\\dfdc",
+            "D:\\dfdc"
+        ],
+        "Netanel": [
+            "F:\\dfdc",
+            "F:\\dfdc-comp"
+        ]
     },
     "batch size": 3
 }
