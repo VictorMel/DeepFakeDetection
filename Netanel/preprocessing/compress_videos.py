@@ -2,44 +2,95 @@ import argparse
 import os
 import random
 import subprocess
-
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
+import numpy as np
+import torch
 from functools import partial
 from glob import glob
 from multiprocessing.pool import Pool
 from os import cpu_count
-
-import cv2
-
-cv2.ocl.setUseOpenCL(False)
-cv2.setNumThreads(0)
+import cv2 as cv
 from tqdm import tqdm
 
+def compress_video(filepath, down_fps, scale_fact, isGray):
+    
+    print(f"Compressing video: {filepath} with down_fps: {down_fps}, scale_fact: {scale_fact}, isGray: {isGray}", flush=True)
+    REF_HEIGHT, REF_WIDTH = 1080, 1920
+    down_height, down_width = round(REF_HEIGHT / scale_fact), round(REF_WIDTH / scale_fact)
+    down_points = (down_width, down_height)
 
-def compress_video(video, root_dir):
-    parent_dir = video.split("/")[-2]
-    out_dir = os.path.join(root_dir, "compressed", parent_dir)
-    os.makedirs(out_dir, exist_ok=True)
-    video_name = video.split("/")[-1]
-    out_path = os.path.join(out_dir, video_name)
-    lvl = random.choice([23, 28, 32])
-    command = f"ffmpeg -i {video} -c:v libx264 -crf {lvl} -threads 1 {out_path}"
-    try:
-        subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
-    except Exception as e:
-        print("Could not process vide", e)
+    cap = cv.VideoCapture(filepath)
+    fps = cap.get(cv.CAP_PROP_FPS)
+    if fps == 0:
+        # raise ValueError(f"Could not read FPS from {filepath}")
+        return None
+    fcnt = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+    fps_factor = round(fps / down_fps)
+    num_frames = round(fcnt / fps_factor)
 
+    # Define color conversion function based on isGray
+    color_conversion = lambda x: cv.cvtColor(x, cv.COLOR_BGR2GRAY) if isGray else cv.cvtColor(x, cv.COLOR_BGR2RGB)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description="Extracts jpegs from video")
-    parser.add_argument("--root-dir", help="root directory", default="/mnt/sota/datasets/deepfake")
+    # Preallocate video tensor
+    video_shape = (num_frames, down_height, down_width) if isGray else (num_frames, down_height, down_width, 3)
+    video = np.empty(video_shape, dtype=np.uint8)
 
-    args = parser.parse_args()
-    videos = list(glob(os.path.join(args.root_dir, "*/*.mp4")))
-    with Pool(processes=cpu_count() - 2) as p:
-        with tqdm(total=len(videos)) as pbar:
-            for _ in p.imap_unordered(partial(compress_video, root_dir=args.root_dir), videos):
-                pbar.update()
+    # Read video frames and store them in the tensor
+    for frame_idx in range(fcnt):
+        if not cap.isOpened():
+            break
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_idx % fps_factor != 0:
+            continue
+
+        height, width, _ = frame.shape
+        if height > width:
+            frame = cv.rotate(frame, cv.ROTATE_90_CLOCKWISE)
+
+        frame_sample = cv.resize(color_conversion(frame), down_points, interpolation=cv.INTER_LINEAR)
+        new_index = round(frame_idx / fps_factor)
+        try:
+            if new_index < num_frames:
+                video[new_index,:,:,:] = frame_sample
+        except IndexError:
+            print(f"IndexError: Attempted to access index {frame_idx // fps_factor} in video_shape {video_shape}")
+            raise 
+
+        frame_idx += 1
+
+    cap.release()
+    cv.destroyAllWindows()
+
+    return torch.tensor(video)
+
+def process_chunk(chunk_id, chunk_indices, meta_df, progress_dict=None):
+    grayscale = False
+    new_fps = 10
+    scale_factor = 20
+    
+    if progress_dict is None:
+        return None
+    
+    chunk_df = meta_df.iloc[chunk_indices]
+    chunk_df = chunk_df.reset_index()
+    tensors = []
+    for index, row in chunk_df.iterrows():
+        source_path = os.path.join(row['path'], row['filename'])
+        tensor_dir = row['path-compressed']
+        tensor_name = f"{row['filename'][:-4]}.tns"
+        tensor_path = os.path.join(tensor_dir, tensor_name)
+                
+        # Ensure directory exists
+        if not os.path.exists(tensor_dir):
+            os.makedirs(tensor_dir)
+        if not os.path.exists(tensor_path):
+            tensor = compress_video(source_path, new_fps, scale_factor, grayscale)
+            os.makedirs(os.path.dirname(tensor_path), exist_ok=True)
+            # Update the progress
+            progress_dict[chunk_id] += 1
+            torch.save(tensor, tensor_path)
+            tensors.append((tensor, tensor_path))
+        
+    return tensors
