@@ -87,6 +87,9 @@ def process_chunk(chunk_id, chunk_indices, meta_df, progress_dict=None):
             os.makedirs(tensor_dir)
         if not os.path.exists(tensor_path):
             tensor = compress_video(source_path, new_fps, scale_factor, grayscale)
+            if tensor is None:
+                print(f"Failed to compress {source_path}")
+                continue
             os.makedirs(os.path.dirname(tensor_path), exist_ok=True)
             # Update the progress
             progress_dict[chunk_id] += 1

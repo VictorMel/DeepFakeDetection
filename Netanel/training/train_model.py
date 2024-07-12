@@ -141,7 +141,7 @@ def TrainModel( oModel: nn.Module, dlTrain: DataLoader, dlVal: DataLoader, oOpt:
         lValLoss.append(valLoss)
         lValScore.append(valScr)
         lLearnRate.append(learnRate)
-        
+
         # Display (Babysitting)
         print('Epoch '              f'{(ii + 1):4d} / ' f'{numEpoch}', end = '')
         print(' | Train Loss: '     f'{trainLoss          :6.3f}', end = '')
@@ -159,10 +159,10 @@ def TrainModel( oModel: nn.Module, dlTrain: DataLoader, dlVal: DataLoader, oOpt:
                     dCheckPoint['Scheduler'] = oSch.state_dict()
                 torch.save(dCheckPoint, 'BestModel.pt')
                 print(' | <-- Checkpoint!', end = '')
-            except:
+            except Exception:
                 print(' | <-- Failed!', end = '')
         print(' |')
-    
+
     # Load best model ("Early Stopping")
     # dCheckPoint = torch.load('BestModel.pt')
     # oModel.load_state_dict(dCheckPoint['Model'])
