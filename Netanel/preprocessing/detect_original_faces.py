@@ -18,8 +18,7 @@ def parse_args():
     parser.add_argument("--root-dir", help="root directory")
     parser.add_argument("--detector-type", help="type of the detector", default="FacenetDetector",
                         choices=["FacenetDetector"])
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def process_videos(videos, root_dir, detector_cls: Type[VideoFaceDetector]):
@@ -31,15 +30,15 @@ def process_videos(videos, root_dir, detector_cls: Type[VideoFaceDetector]):
         video, indices, frames = item[0]
         batches = [frames[i:i + detector._batch_size] for i in range(0, len(frames), detector._batch_size)]
         for j, frames in enumerate(batches):
-            result.update({int(j * detector._batch_size) + i : b for i, b in zip(indices, detector._detect_faces(frames))})
-        id = os.path.splitext(os.path.basename(video))[0]
+            result |= {
+                int(j * detector._batch_size) + i: b
+                for i, b in zip(indices, detector._detect_faces(frames))
+            }
+        id_ = os.path.splitext(os.path.basename(video))[0]
         out_dir = os.path.join(root_dir, "boxes")
         os.makedirs(out_dir, exist_ok=True)
-        with open(os.path.join(out_dir, "{}.json".format(id)), "w") as f:
+        with open(os.path.join(out_dir, f"{id_}.json"), "w") as f:
             json.dump(result, f)
-
-
-
 
 def main():
     args = parse_args()
